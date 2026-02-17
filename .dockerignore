@@ -1,0 +1,10 @@
+node_modules
+npm-debug.log
+.git
+.gitignore
+.env
+.dockerignore
+Dockerfile
+local_bin
+__pycache__
+*.pyc
