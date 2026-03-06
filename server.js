@@ -2,20 +2,29 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const routes = require('./routes/index');
+const { execSync } = require('child_process');
+
+try {
+    console.log('[yt-dlp] Checking for updates...');
+    execSync(`${__dirname}/node_modules/yt-dlp-exec/bin/yt-dlp -U`, { stdio: 'pipe' });
+    console.log('[yt-dlp] Up to date.');
+} catch (e) {
+    console.warn('[yt-dlp] Auto-update failed (non-fatal):', e.message);
+}
 
 dotenv.config();
 
 const connectDB = require('./config/db');
 
-// Connect to Database
 connectDB();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Middleware
 const allowedOrigins = [
     'http://localhost:5174',
+    'http://localhost:5173',
+    'https://adio.adityayadav.site',
     'https://adio-frontend.vercel.app'
 ];
 
@@ -29,14 +38,11 @@ app.use(cors({
     }
 })); app.use(express.json());
 
-// Routes
 app.use('/api', routes);
 
-// Start Cron Jobs (Daily Cache)
 const cronService = require('./services/cronService');
 cronService.initCron();
 
-// Start Server
 app.listen(PORT, () => {
     console.log(`\n╔════════════════════════════════════════╗`);
     console.log(`║     Music App Server (Node.js MVC)    ║`);

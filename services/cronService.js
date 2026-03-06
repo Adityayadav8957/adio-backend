@@ -72,9 +72,11 @@ module.exports = {
             updateDailyCache();
         });
 
-        // Run immediately on startup to populate cache if missing
-        console.log("Initializing Cron Service... Running immediate cache update.");
-        updateDailyCache();
+        // NOTE: We do NOT run updateDailyCache() on startup.
+        // Doing so spawns ~30 yt-dlp processes simultaneously which crashes
+        // the server on low-memory hosts (e.g. Render 512 MB).
+        // The cron job at midnight is sufficient; MongoDB already persists the cache.
+        console.log("Cron Service Initialized (Schedule: 0 0 * * * — midnight daily).");
     },
     updateDailyCache
 };

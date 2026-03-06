@@ -18,11 +18,9 @@ router.get('/search', searchController.search);
 // User Profile (Immediate Sync)
 router.get('/me', requireAuth, userController.getMe);
 
-// Setup Stream
+// Setup Stream (returns direct YouTube CDN URL — frontend plays it natively)
 router.get('/stream/:videoId', streamController.getStreamUrl);
 
-// Proxy Audio
-router.get('/proxy-audio/:videoId', streamController.proxyAudio);
 
 // Playlists
 router.get('/playlists', requireAuth, playlistController.getPlaylists);
