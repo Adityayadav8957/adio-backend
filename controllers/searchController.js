@@ -17,15 +17,16 @@ const search = async (req, res) => {
             return res.json({ results: [], query: q });
         }
 
-        // pythonService currently returns a single object. 
-        // Wrap it in an array to match the old search behavior expected by frontend.
-        const results = [{
-            id: output.id,
-            title: output.title,
-            author: output.author,
-            duration: output.duration,
-            thumb: output.thumb
-        }].filter(item => item.id && item.duration > 30 && item.duration < 900); // Filter shorts/long mixes
+        // Support both old single object payloads and new array payloads from Python microservice
+        const dataArray = Array.isArray(output) ? output : [output];
+
+        const results = dataArray.map(item => ({
+            id: item.id,
+            title: item.title,
+            author: item.author,
+            duration: item.duration,
+            thumb: item.thumb
+        })).filter(item => item.id && item.duration > 30 && item.duration < 900); // Filter shorts/long mixes
 
         res.json({ results, query: q });
 

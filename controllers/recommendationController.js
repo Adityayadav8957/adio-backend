@@ -32,9 +32,18 @@ const getNextSong = async (req, res) => {
         const searchQuery = `${ctxTitle} ${ctxAuthor} similar songs`;
         console.log(`[Rec] Searching: ${searchQuery}`);
 
-        const nextVid = await pythonService.searchYouTube(searchQuery);
+        const searchResults = await pythonService.searchYouTube(searchQuery);
+        const dataArray = Array.isArray(searchResults) ? searchResults : [searchResults];
 
-        if (!nextVid || nextVid.id === videoId) {
+        let nextVid = null;
+        for (const entry of dataArray) {
+            if (entry && entry.id && entry.id !== videoId) {
+                nextVid = entry;
+                break;
+            }
+        }
+
+        if (!nextVid) {
             return res.status(404).json({ error: "No recommendation found" });
         }
 
