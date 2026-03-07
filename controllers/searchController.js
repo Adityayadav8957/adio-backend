@@ -1,8 +1,7 @@
-const ytDlp = require('yt-dlp-exec');
+const pythonService = require('../services/pythonService');
 
 const search = async (req, res) => {
     const q = req.query.q;
-    const n = parseInt(req.query.n) || 15;
 
     if (!q) {
         return res.status(400).json({ error: "Missing query parameter 'q'" });
@@ -10,20 +9,23 @@ const search = async (req, res) => {
 
     try {
         console.log(`Searching for: ${q}`);
-        const output = await ytDlp(`ytsearch${n}:${q}`, {
-            dumpSingleJson: true,
-            noWarnings: true,
-            flatPlaylist: true,
-            skipDownload: true
-        });
+        // Python service is currently hardcoded to return 1 item via ytsearch1:
+        // but we'll adapt the frontend/backend to accept the array format.
+        const output = await pythonService.searchYouTube(q);
 
-        const results = (output.entries || []).map(entry => ({
-            id: entry.id,
-            title: entry.title,
-            author: entry.uploader || entry.channel || "Unknown Artist",
-            duration: entry.duration || 0,
-            thumb: entry.thumbnails ? entry.thumbnails[entry.thumbnails.length - 1].url : ""
-        })).filter(item => item.id && item.duration > 30 && item.duration < 900); // Filter shorts/long mixes
+        if (!output) {
+            return res.json({ results: [], query: q });
+        }
+
+        // pythonService currently returns a single object. 
+        // Wrap it in an array to match the old search behavior expected by frontend.
+        const results = [{
+            id: output.id,
+            title: output.title,
+            author: output.author,
+            duration: output.duration,
+            thumb: output.thumb
+        }].filter(item => item.id && item.duration > 30 && item.duration < 900); // Filter shorts/long mixes
 
         res.json({ results, query: q });
 

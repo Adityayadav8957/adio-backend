@@ -1,4 +1,4 @@
-const ytDlp = require('yt-dlp-exec');
+const pythonService = require('../services/pythonService');
 
 // Simple cache for video metadata to avoid re-fetching for recommendations
 const metaCache = new Map();
@@ -21,13 +21,9 @@ const getNextSong = async (req, res) => {
             ctxTitle = cached.title;
             ctxAuthor = cached.author;
         } else {
-            const info = await ytDlp(`https://www.youtube.com/watch?v=${videoId}`, {
-                dumpSingleJson: true,
-                noWarnings: true,
-                skipDownload: true
-            });
+            const info = await pythonService.getStreamUrl(videoId);
             ctxTitle = info.title;
-            ctxAuthor = info.uploader;
+            ctxAuthor = info.author;
             metaCache.set(videoId, { title: ctxTitle, author: ctxAuthor });
         }
 
@@ -36,35 +32,19 @@ const getNextSong = async (req, res) => {
         const searchQuery = `${ctxTitle} ${ctxAuthor} similar songs`;
         console.log(`[Rec] Searching: ${searchQuery}`);
 
-        const output = await ytDlp(`ytsearch5:${searchQuery}`, {
-            dumpSingleJson: true,
-            noWarnings: true,
-            flatPlaylist: true,
-            skipDownload: true
-        });
+        const nextVid = await pythonService.searchYouTube(searchQuery);
 
-        const entries = output.entries || [];
-        let nextVid = null;
-
-        // Find first video that ISN'T the current one
-        for (const entry of entries) {
-            if (entry.id && entry.id !== videoId) {
-                nextVid = entry;
-                break;
-            }
-        }
-
-        if (!nextVid) {
+        if (!nextVid || nextVid.id === videoId) {
             return res.status(404).json({ error: "No recommendation found" });
         }
 
         res.json({
             id: nextVid.id,
             title: nextVid.title,
-            author: nextVid.uploader || nextVid.channel,
+            author: nextVid.author,
             duration: nextVid.duration,
-            thumb: nextVid.thumbnails ? nextVid.thumbnails[nextVid.thumbnails.length - 1].url : "",
-            source: "yt-dlp-node"
+            thumb: nextVid.thumb,
+            source: "python-microservice"
         });
 
     } catch (e) {
