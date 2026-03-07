@@ -1,79 +1,74 @@
-const ytDlp = require('yt-dlp-exec');
+const { Readable } = require('stream');
+const pythonService = require('../services/pythonService');
+const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 
-// Cache for stream URLs to avoid re-fetching
-// Capped at MAX_CACHE_SIZE to prevent unbounded memory growth.
+// In-memory URL cache (capped at MAX_CACHE_SIZE entries, 1hr TTL)
 const streamCache = new Map();
-const CACHE_TTL = 3600 * 1000; // 1 hour
+const CACHE_TTL = 3600 * 1000;
 const MAX_CACHE_SIZE = 50;
 
-const getStreamUrl = async (req, res) => {
-    const videoId = req.params.videoId;
+// Helper: get stream data from cache or Python service
+async function getCachedStreamData(videoId) {
+    if (streamCache.has(videoId)) {
+        const cached = streamCache.get(videoId);
+        if (cached.expires > Date.now()) return cached.data;
+        streamCache.delete(videoId);
+    }
+    const result = await pythonService.getStreamUrl(videoId);
+    if (streamCache.size >= MAX_CACHE_SIZE) {
+        streamCache.delete(streamCache.keys().next().value);
+    }
+    streamCache.set(videoId, { data: result, expires: Date.now() + CACHE_TTL });
+    return result;
+}
 
+// Returns metadata + URL (used internally / for debugging)
+const getStreamUrl = async (req, res) => {
+    const { videoId } = req.params;
+    if (!videoId || videoId.length !== 11) {
+        return res.status(400).json({ error: "Invalid video ID" });
+    }
+    try {
+        const result = await getCachedStreamData(videoId);
+        res.json(result);
+    } catch (e) {
+        console.error("Stream Controller Error", e.message);
+        res.status(500).json({ error: 'Failed to get stream.', details: e.message });
+    }
+};
+
+// Proxies audio through the Python service.
+// Python extracts the URL and fetches audio FROM THE SAME IP in one step,
+// avoiding YouTube's signed URL IP-lock that causes 403 when the browser fetches directly.
+const proxyAudio = async (req, res) => {
+    const { videoId } = req.params;
     if (!videoId || videoId.length !== 11) {
         return res.status(400).json({ error: "Invalid video ID" });
     }
 
-    // Check cache
-    if (streamCache.has(videoId)) {
-        const cached = streamCache.get(videoId);
-        if (cached.expires > Date.now()) {
-            console.log(`[CACHE HIT] ${videoId}`);
-            return res.json(cached.data);
-        } else {
-            streamCache.delete(videoId);
-        }
-    }
-
     try {
-        console.log(`[yt-dlp] Extracting: https://www.youtube.com/watch?v=${videoId}`);
-        const output = await ytDlp(`https://www.youtube.com/watch?v=${videoId}`, {
-            dumpSingleJson: true,
-            noWarnings: true,
-            skipDownload: true,
-            format: 'bestaudio/best',
-            // Use Android client to bypass YouTube bot-detection (no cookies needed)
-            extractorArgs: 'youtube:player_client=android'
-        });
+        console.log(`[Proxy] Streaming ${videoId} via Python`);
+        const ytRes = await pythonService.streamAudio(videoId, req.headers.range);
+        console.log(`[Proxy] Python returned status: ${ytRes.status}`);
 
-        const result = {
-            url: output.url,
-            title: output.title,
-            author: output.uploader || output.channel,
-            duration: output.duration,
-            format: {
-                ext: output.ext,
-                acodec: output.acodec,
-                abr: output.abr
-            },
-            video_id: videoId
-        };
-
-        // Evict the oldest entry if we hit the size cap
-        if (streamCache.size >= MAX_CACHE_SIZE) {
-            const oldestKey = streamCache.keys().next().value;
-            streamCache.delete(oldestKey);
+        res.status(ytRes.status);
+        for (const h of ['content-type', 'content-length', 'content-range', 'accept-ranges']) {
+            const v = ytRes.headers.get(h);
+            if (v) res.setHeader(h, v);
         }
 
-        streamCache.set(videoId, {
-            data: result,
-            expires: Date.now() + CACHE_TTL
-        });
-
-        res.json(result);
-
+        if (ytRes.body) {
+            ytRes.body.pipe(res);
+        } else {
+            console.log(`[Proxy] No body from Python`);
+            res.end();
+        }
     } catch (e) {
-        console.error("Stream Controller Error", e);
-        res.status(500).json({
-            error: 'Failed to get stream.',
-            details: e.message
-        });
+        console.error("Proxy Audio Error", e.message);
+        if (!res.headersSent) {
+            res.status(500).json({ error: 'Failed to proxy audio.' });
+        }
     }
 };
 
-// NOTE: proxyAudio has been removed.
-// The frontend receives the direct YouTube CDN URL from getStreamUrl and plays it
-// natively via <audio src={url}> — no audio data ever flows through this server.
-
-module.exports = {
-    getStreamUrl
-};
+module.exports = { getStreamUrl, proxyAudio };

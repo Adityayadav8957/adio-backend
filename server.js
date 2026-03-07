@@ -2,15 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const routes = require('./routes/index');
-const { execSync } = require('child_process');
 
-try {
-    console.log('[yt-dlp] Checking for updates...');
-    execSync(`${__dirname}/node_modules/yt-dlp-exec/bin/yt-dlp -U`, { stdio: 'pipe' });
-    console.log('[yt-dlp] Up to date.');
-} catch (e) {
-    console.warn('[yt-dlp] Auto-update failed (non-fatal):', e.message);
-}
 
 dotenv.config();
 
